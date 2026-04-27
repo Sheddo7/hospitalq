@@ -27,36 +27,43 @@ from reportlab.graphics.barcode.qr import QrCodeWidget
 
 app = Flask(__name__)
 
-import os
-
-# Get database URL from environment variable (Railway sets this automatically)
+# ----- Database Configuration (Railway compatible) -----
 DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+    # SQLAlchemy requires 'postgresql://' scheme
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
-# If no DATABASE_URL is found, fallback to local SQLite for development
 if not DATABASE_URL:
+    # Fallback to SQLite for local development
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///queue.db'
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 
-# Config
+# ----- App Configuration -----
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a-super-secret-dev-key')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Initialise extensions
 db.init_app(app)
+csrf = CSRFProtect(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Login Manager
+# ----- Create tables automatically on startup -----
+# This ensures the database schema exists on Railway without needing manual shell commands.
+with app.app_context():
+    db.create_all()
+    print("✅ Database tables created/verified.")
+
+# ----- Login Manager -----
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access this page.'
-
 
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-
-# Role decorator
+# ----- Role decorator -----
 def role_required(*roles):
     def decorator(f):
         @wraps(f)
@@ -65,21 +72,17 @@ def role_required(*roles):
                 flash('Access denied.', 'danger')
                 return redirect(url_for('index'))
             return f(*args, **kwargs)
-
         return decorated_function
-
     return decorator
 
-
-# SocketIO event: join room
+# ----- SocketIO event: join room -----
 @socketio.on('join')
 def handle_join(data):
     dept_id = data.get('dept_id')
     if dept_id:
         join_room(f"dept_{dept_id}")
 
-
-# ---------- Wait time helper functions (unchanged) ----------
+# ---------- Wait time helper functions ----------
 def weighted_average_wait_time(dept_id):
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     completed = QueueEntry.query.filter(
@@ -98,14 +101,12 @@ def weighted_average_wait_time(dept_id):
         total_weight += weight
     return round(weighted_sum / total_weight) if total_weight > 0 else None
 
-
 def estimate_wait_time(dept_id, position):
     avg = weighted_average_wait_time(dept_id)
     dept = db.session.get(Department, dept_id)
     base = dept.base_wait_minutes if dept else 15
     per_patient = max(avg, base) if avg is not None else base
     return per_patient * max(position - 1, 0)
-
 
 def get_wait_time_trend(dept_id, hours=2):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -130,7 +131,6 @@ def get_wait_time_trend(dept_id, hours=2):
         trend.append({'time': bucket.strftime('%H:%M'), 'wait': round(avg_wait)})
     return trend
 
-
 def renumber_queue(dept_id):
     waiting = QueueEntry.query.filter_by(
         department_id=dept_id,
@@ -141,12 +141,10 @@ def renumber_queue(dept_id):
             entry.ticket_number = idx
     db.session.commit()
 
-
-# ---------- Auth routes (unchanged) ----------
+# ---------- Auth routes ----------
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -170,7 +168,6 @@ def register():
         return redirect(url_for('login'))
     return render_template('register.html', form=form)
 
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -184,15 +181,13 @@ def login():
         flash('Invalid email or password.', 'danger')
     return render_template('login.html', form=form)
 
-
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('index'))
 
-
-# Seed route (development only)
+# ----- Seed route (development only) -----
 @app.route('/seed')
 def seed():
     if Department.query.first():
@@ -226,8 +221,7 @@ def seed():
     flash('Database seeded.', 'success')
     return redirect(url_for('index'))
 
-
-# ---------- Patient routes (unchanged) ----------
+# ---------- Patient routes ----------
 @app.route('/dashboard', methods=['GET', 'POST'])
 @login_required
 def dashboard():
@@ -277,7 +271,6 @@ def dashboard():
     return render_template('dashboard.html', form=form, active_ticket=None, position=0, total_waiting=0, est_wait=0,
                            trend_data=[])
 
-
 @app.route('/queue-status')
 @login_required
 def queue_status():
@@ -292,15 +285,13 @@ def queue_status():
         queue_data_list.append((dept.id, dept.name, entries))
     return render_template('queue_status.html', queue_data_list=queue_data_list)
 
-
 @app.route('/api/wait-trend/<int:dept_id>')
 @login_required
 def wait_trend_api(dept_id):
     trend = get_wait_time_trend(dept_id, hours=2)
     return {'trend': trend}
 
-
-# ---------- Cancellation routes (unchanged) ----------
+# ---------- Cancellation routes ----------
 @app.route('/cancel-ticket', methods=['POST'])
 @login_required
 def cancel_ticket():
@@ -323,8 +314,7 @@ def cancel_ticket():
     flash('Your ticket has been cancelled.', 'info')
     return redirect(url_for('dashboard'))
 
-
-# ---------- Doctor/Admin routes with enhancements ----------
+# ---------- Doctor/Admin routes ----------
 @app.route('/admin')
 @login_required
 @role_required('doctor', 'admin', 'receptionist')
@@ -339,12 +329,10 @@ def admin():
     search_name = request.args.get('search_name', '').strip()
     search_ticket = request.args.get('search_ticket', '').strip()
 
-    # Inside the admin route, after getting departments
     if not selected_id and departments:
         selected_id = departments[0].id
     elif not selected_id:
-        selected_id = None  # or handle gracefully
-        # If doctor tries to access a department not assigned, redirect to first allowed
+        selected_id = None
         if departments:
             selected_id = departments[0].id
         else:
@@ -377,7 +365,7 @@ def admin():
         status='done'
     ).filter(QueueEntry.served_at >= today_start).count()
 
-    # Department stats for bar chart (only for visible departments)
+    # Department stats for bar chart
     dept_stats = []
     for d in departments:
         count = QueueEntry.query.filter_by(
@@ -397,19 +385,16 @@ def admin():
         ).count()
         peak_hours.append({'hour': f'{hour:02d}:00', 'count': count})
 
-    # Doctor performance stats (for the current doctor)
+    # Doctor performance stats
     doctor_stats = None
     if current_user.role == 'doctor' and current_user.is_available is not None:
-        # Tickets served by this doctor today
         served_today = QueueEntry.query.filter(
             QueueEntry.served_by == current_user.id,
             QueueEntry.status == 'done',
             QueueEntry.served_at >= today_start
         ).all()
         total_patients = len(served_today)
-        # Patients per hour (assuming work day of 8 hours, or use actual logged hours)
         patients_per_hour = round(total_patients / 8, 1) if total_patients > 0 else 0
-        # Average wait time for patients served by this doctor
         if total_patients > 0:
             total_wait = sum((e.served_at - e.booked_at).seconds // 60 for e in served_today)
             avg_wait = round(total_wait / total_patients)
@@ -435,12 +420,10 @@ def admin():
                            is_available=current_user.is_available if current_user.role == 'doctor' else None
                            )
 
-
 @app.route('/call-next/<int:dept_id>', methods=['POST'])
 @login_required
 @role_required('doctor', 'admin')
 def call_next(dept_id):
-    # Check if doctor is paused
     if current_user.role == 'doctor' and not current_user.is_available:
         flash('You are currently paused. Unpause to call next patient.', 'warning')
         return redirect(url_for('admin', dept=dept_id))
@@ -452,7 +435,7 @@ def call_next(dept_id):
     if current_serving:
         current_serving.status = 'done'
         current_serving.served_at = datetime.now(timezone.utc)
-        current_serving.served_by = current_user.id  # record who served
+        current_serving.served_by = current_user.id
 
     next_patient = QueueEntry.query.filter_by(
         department_id=dept_id,
@@ -467,9 +450,7 @@ def call_next(dept_id):
     else:
         db.session.commit()
         flash('No more patients in queue.', 'info')
-
     return redirect(url_for('admin', dept=dept_id))
-
 
 @app.route('/call-multiple/<int:dept_id>/<int:count>', methods=['POST'])
 @login_required
@@ -508,7 +489,6 @@ def call_multiple(dept_id, count):
     flash(f'Called #{first.ticket_number}. There are {len(next_patients) - 1} more waiting.', 'success')
     return redirect(url_for('admin', dept=dept_id))
 
-
 @app.route('/reset-queue/<int:dept_id>', methods=['POST'])
 @login_required
 @role_required('admin')
@@ -525,7 +505,6 @@ def reset_queue(dept_id):
     socketio.emit('queue_update', {'dept_id': dept_id}, room=f"dept_{dept_id}")
     flash(f'Reset queue for department: {len(waiting)} tickets cancelled.', 'info')
     return redirect(url_for('admin', dept=dept_id))
-
 
 @app.route('/export-csv/<int:dept_id>')
 @login_required
@@ -552,7 +531,6 @@ def export_csv(dept_id):
     response.headers['Content-type'] = 'text/csv'
     return response
 
-
 @app.route('/admin/no-show/<int:entry_id>', methods=['POST'])
 @login_required
 @role_required('doctor', 'admin')
@@ -570,8 +548,6 @@ def mark_no_show(entry_id):
     flash(f'Patient {entry.patient.full_name} marked as no-show.', 'info')
     return redirect(url_for('admin', dept=dept_id))
 
-
-# ---------- Doctor availability toggle ----------
 @app.route('/doctor/toggle-availability', methods=['POST'])
 @login_required
 @role_required('doctor')
@@ -582,15 +558,14 @@ def toggle_availability():
     flash(f'You are now {status}.', 'success')
     return redirect(url_for('admin'))
 
-
-# ---------- Admin user management with department assignment ----------
+# ---------- Admin user management ----------
 @app.route('/admin/users')
 @login_required
 @role_required('admin')
 def manage_users():
     users = User.query.order_by(User.role.asc(), User.full_name.asc()).all()
-    form  = CreateUserForm()
-    all_departments = Department.query.all()   # ADD THIS LINE
+    form = CreateUserForm()
+    all_departments = Department.query.all()
     return render_template('manage_users.html', users=users, form=form, all_departments=all_departments)
 
 @app.route('/admin/users/assign-departments/<int:user_id>', methods=['POST'])
@@ -607,7 +582,6 @@ def assign_departments(user_id):
     db.session.commit()
     flash(f'Departments assigned to {user.full_name}.', 'success')
     return redirect(url_for('manage_users'))
-
 
 @app.route('/admin/users/create', methods=['POST'])
 @login_required
@@ -631,7 +605,6 @@ def create_user():
         flash(f'{form.role.data.capitalize()} account created for {form.full_name.data}.', 'success')
     return redirect(url_for('manage_users'))
 
-
 @app.route('/admin/users/edit/<int:user_id>', methods=['GET', 'POST'])
 @login_required
 @role_required('admin')
@@ -640,7 +613,6 @@ def edit_user(user_id):
     if not user:
         flash('User not found.', 'danger')
         return redirect(url_for('manage_users'))
-
     form = EditUserForm(obj=user)
     if form.validate_on_submit():
         user.full_name = form.full_name.data
@@ -649,9 +621,7 @@ def edit_user(user_id):
         db.session.commit()
         flash(f'User {user.full_name} updated successfully.', 'success')
         return redirect(url_for('manage_users'))
-
     return render_template('edit_user.html', form=form, user=user)
-
 
 @app.route('/admin/users/reset-password/<int:user_id>', methods=['GET', 'POST'])
 @login_required
@@ -661,18 +631,13 @@ def reset_user_password(user_id):
     if not user:
         flash('User not found.', 'danger')
         return redirect(url_for('manage_users'))
-
     form = ResetPasswordForm()
     if form.validate_on_submit():
         user.password_hash = generate_password_hash(form.new_password.data)
         db.session.commit()
         flash(f'Password reset for {user.full_name}.', 'success')
-        # In production, send email here
         return redirect(url_for('manage_users'))
-
     return render_template('reset_password.html', form=form, user=user)
-
-
 
 @app.route('/admin/users/delete/<int:user_id>', methods=['POST'])
 @login_required
@@ -690,7 +655,6 @@ def delete_user(user_id):
     flash(f'{user.full_name} has been removed.', 'info')
     return redirect(url_for('manage_users'))
 
-
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
@@ -703,10 +667,9 @@ def profile():
         db.session.commit()
         flash('Profile updated successfully.', 'success')
         return redirect(url_for('profile'))
-
     return render_template('profile.html', form=form)
 
-# ---------- Department management routes (unchanged) ----------
+# ---------- Department management routes ----------
 @app.route('/admin/departments')
 @login_required
 @role_required('admin')
@@ -714,7 +677,6 @@ def manage_departments():
     departments = Department.query.order_by(Department.name.asc()).all()
     form = DepartmentForm()
     return render_template('manage_departments.html', departments=departments, form=form)
-
 
 @app.route('/admin/departments/create', methods=['POST'])
 @login_required
@@ -735,7 +697,6 @@ def create_department():
         flash(f'Department "{form.name.data}" created.', 'success')
     return redirect(url_for('manage_departments'))
 
-
 @app.route('/admin/departments/delete/<int:dept_id>', methods=['POST'])
 @login_required
 @role_required('admin')
@@ -754,7 +715,6 @@ def delete_department(dept_id):
     db.session.commit()
     flash(f'Department "{dept.name}" deleted.', 'info')
     return redirect(url_for('manage_departments'))
-
 
 @app.route('/admin/departments/rename/<int:dept_id>', methods=['POST'])
 @login_required
@@ -777,7 +737,6 @@ def rename_department(dept_id):
     flash(f'Department renamed to "{name}".', 'success')
     return redirect(url_for('manage_departments'))
 
-
 @app.route('/admin/departments/update_base/<int:dept_id>', methods=['POST'])
 @login_required
 @role_required('admin')
@@ -794,7 +753,6 @@ def update_department_base(dept_id):
     else:
         flash('Invalid base time (must be 1-120).', 'danger')
     return redirect(url_for('manage_departments'))
-
 
 # ---------- PDF and History ----------
 @app.route('/ticket/pdf')
@@ -817,7 +775,6 @@ def ticket_pdf():
         flash('No active ticket to print.', 'warning')
         return redirect(url_for('dashboard'))
 
-    # Calculate position and wait time
     waiting_count = QueueEntry.query.filter_by(
         department_id=active_ticket.department_id,
         status='waiting'
@@ -828,13 +785,11 @@ def ticket_pdf():
     ).filter(QueueEntry.ticket_number <= active_ticket.ticket_number).count()
     est_wait = estimate_wait_time(active_ticket.department_id, position)
 
-    # Hospital info
     hospital_name = "City General Hospital"
     hospital_address = "123 Health Avenue, Medical District, City, 12345"
     hospital_phone = "+1 (555) 123-4567"
     emergency = "In case of emergency, please contact the reception desk immediately."
 
-    # QR data
     base_url = request.url_root.rstrip('/')
     qr_data = f"{base_url}/checkin?ticket={active_ticket.ticket_number}"
 
@@ -849,7 +804,6 @@ def ticket_pdf():
     success = colors.HexColor('#00A86B')
     warning = colors.HexColor('#F59E0B')
 
-    # Header background
     c.setFillColor(primary)
     c.roundRect(5*mm, h - 28*mm, w - 10*mm, 22*mm, 4*mm, fill=1, stroke=0)
     c.setFillColor(white)
@@ -862,7 +816,6 @@ def ticket_pdf():
     c.setLineWidth(0.5)
     c.line(5*mm, h - 31*mm, w - 5*mm, h - 31*mm)
 
-    # Ticket number
     c.setFillColor(muted)
     c.setFont('Helvetica', 7)
     c.drawCentredString(w/2, h - 36*mm, 'YOUR TICKET NUMBER')
@@ -897,7 +850,6 @@ def ticket_pdf():
     c.line(5*mm, h - 83*mm, w - 5*mm, h - 83*mm)
     c.setDash()
 
-    # Queue stats
     c.setFillColor(primary)
     c.setFont('Helvetica-Bold', 20)
     c.drawCentredString(w/4, h - 93*mm, f"{position}/{waiting_count}")
@@ -907,7 +859,6 @@ def ticket_pdf():
     c.drawCentredString(w/4, h - 97*mm, 'QUEUE POSITION')
     c.drawCentredString(3*w/4, h - 97*mm, 'EST. WAIT')
 
-    # Status badge
     badge_color = success if active_ticket.status == 'serving' else warning
     badge_text = 'NOW SERVING' if active_ticket.status == 'serving' else 'WAITING'
     c.setFillColor(badge_color)
@@ -916,7 +867,6 @@ def ticket_pdf():
     c.setFont('Helvetica-Bold', 8)
     c.drawCentredString(w/2, h - 101.5*mm, badge_text)
 
-    # QR Code (ReportLab built-in)
     qr_size = 20*mm
     qr_x = w - 5*mm - qr_size
     qr_y = h - 106*mm - qr_size
@@ -925,7 +875,6 @@ def ticket_pdf():
     qr_drawing.add(qr_widget)
     renderPDF.draw(qr_drawing, c, qr_x, qr_y)
 
-    # Hospital contact details
     c.setFillColor(muted)
     c.setFont('Helvetica', 6)
     c.drawString(5*mm, h - 114*mm, hospital_address[:50])
@@ -950,9 +899,7 @@ def checkin():
     ticket_num = request.args.get('ticket', type=int)
     if not ticket_num:
         return "Invalid ticket", 400
-    # For now, just redirect to queue status
     return redirect(url_for('queue_status'))
-
 
 @app.route('/history')
 @login_required
@@ -962,11 +909,9 @@ def history():
         QueueEntry.status.in_(['done', 'cancelled'])
     )
 
-    # Filter by date range
     date_filter = request.args.get('date_filter', 'all')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
-    today = datetime.now(timezone.utc).date()
 
     if date_filter == 'last_week':
         start = datetime.now(timezone.utc) - timedelta(days=7)
@@ -979,7 +924,6 @@ def history():
         end = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         query = query.filter(QueueEntry.booked_at >= start, QueueEntry.booked_at < end)
 
-    # Search by department or notes
     search = request.args.get('search', '').strip()
     if search:
         query = query.join(Department).filter(
@@ -990,8 +934,6 @@ def history():
         )
 
     past_tickets = query.order_by(QueueEntry.booked_at.desc()).all()
-
-    # Calculate average wait time for completed visits
     completed = [t for t in past_tickets if t.status == 'done' and t.served_at]
     if completed:
         total_wait = sum((t.served_at - t.booked_at).seconds // 60 for t in completed)
@@ -1000,13 +942,12 @@ def history():
         avg_wait = 0
 
     return render_template('history.html',
-        past_tickets=past_tickets,
-        avg_wait=avg_wait,
-        date_filter=date_filter,
-        search=search,
-        start_date=start_date,
-        end_date=end_date
-    )
+                           past_tickets=past_tickets,
+                           avg_wait=avg_wait,
+                           date_filter=date_filter,
+                           search=search,
+                           start_date=start_date,
+                           end_date=end_date)
 
 @app.route('/rate-visit/<int:entry_id>', methods=['POST'])
 @login_required
@@ -1034,13 +975,12 @@ def history_pdf():
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
     from io import BytesIO
-    import urllib.parse
 
-    # Get filtered tickets (same logic as history but without pagination)
     query = QueueEntry.query.filter(
         QueueEntry.user_id == current_user.id,
         QueueEntry.status.in_(['done', 'cancelled'])
     )
+
     date_filter = request.args.get('date_filter', 'all')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
@@ -1054,6 +994,7 @@ def history_pdf():
         start = datetime.strptime(start_date, '%Y-%m-%d')
         end = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         query = query.filter(QueueEntry.booked_at >= start, QueueEntry.booked_at < end)
+
     search = request.args.get('search', '')
     if search:
         query = query.join(Department).filter(
@@ -1069,12 +1010,10 @@ def history_pdf():
     styles = getSampleStyleSheet()
     elements = []
 
-    # Title
     title = Paragraph(f"Visit History for {current_user.full_name}", styles['Title'])
     elements.append(title)
     elements.append(Spacer(1, 10))
 
-    # Table data
     data = [['Ticket', 'Department', 'Date', 'Status', 'Wait (min)', 'Rating']]
     for t in tickets:
         wait = (t.served_at - t.booked_at).seconds // 60 if t.served_at else '-'
@@ -1109,10 +1048,6 @@ def history_pdf():
     response.headers['Content-Disposition'] = f'attachment; filename=history_{current_user.id}.pdf'
     return response
 
-
-
-# Entry point
+# ----- Entry point (for local development) -----
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     socketio.run(app, debug=True)
