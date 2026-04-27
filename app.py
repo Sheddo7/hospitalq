@@ -11,6 +11,10 @@ from functools import wraps
 import csv
 import io
 from models import Department
+import os
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_socketio import SocketIO
 import qrcode
 from io import BytesIO
 from reportlab.lib.pagesizes import A6
@@ -35,11 +39,10 @@ else:
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 
 # Config
-app.config['SECRET_KEY'] = 'change-this-before-production'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a-super-secret-dev-key')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
-csrf = CSRFProtect(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Login Manager
