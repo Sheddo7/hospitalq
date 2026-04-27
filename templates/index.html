@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}HospitalQ — Skip the Wait{% endblock %}
+
+{% block content %}
+<div class="row align-items-center min-vh-75 fade-in fade-in-1">
+    <div class="col-lg-6 py-5">
+        <span class="badge mb-3" style="background:var(--primary-light);color:var(--primary);font-size:0.8rem;padding:0.5rem 1rem;">
+            <i class="bi bi-circle-fill me-1" style="font-size:0.5rem;"></i> Live Queue Management
+        </span>
+        <h1 style="font-size:3rem;font-weight:800;letter-spacing:-1.5px;line-height:1.1;">
+            Skip the<br>
+            <span style="color:var(--primary);">Waiting Room.</span>
+        </h1>
+        <p class="mt-3 mb-4" style="font-size:1.1rem;color:var(--text-muted);max-width:420px;line-height:1.7;">
+            Book your hospital slot remotely, track your position in real time,
+            and arrive only when it's your turn.
+        </p>
+        {% if not current_user.is_authenticated %}
+        <div class="d-flex gap-3 flex-wrap">
+            <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">
+                <i class="bi bi-person-plus me-1"></i> Get Started
+            </a>
+            <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-lg">
+                Login
+            </a>
+        </div>
+        {% else %}
+        <div class="d-flex gap-3 flex-wrap">
+            <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">
+                <i class="bi bi-grid me-1"></i> Dashboard
+            </a>
+            <a href="{{ url_for('queue_status') }}" class="btn btn-outline-primary btn-lg">
+                <i class="bi bi-list-ol me-1"></i> Live Queue
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-6 py-5">
+        <div class="row g-3">
+            <div class="col-6 fade-in fade-in-2">
+                <div class="card p-3">
+                    <i class="bi bi-calendar-check mb-2" style="font-size:1.8rem;color:var(--primary);"></i>
+                    <div style="font-weight:700;font-size:0.95rem;">Book Remotely</div>
+                    <div style="font-size:0.82rem;color:var(--text-muted);margin-top:0.3rem;">
+                        Reserve your slot from home before you leave.
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 fade-in fade-in-2">
+                <div class="card p-3">
+                    <i class="bi bi-broadcast mb-2" style="font-size:1.8rem;color:var(--success);"></i>
+                    <div style="font-weight:700;font-size:0.95rem;">Live Tracking</div>
+                    <div style="font-size:0.82rem;color:var(--text-muted);margin-top:0.3rem;">
+                        Watch your queue position update in real time.
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 fade-in fade-in-3">
+                <div class="card p-3">
+                    <i class="bi bi-clock mb-2" style="font-size:1.8rem;color:var(--warning);"></i>
+                    <div style="font-weight:700;font-size:0.95rem;">Wait Estimates</div>
+                    <div style="font-size:0.82rem;color:var(--text-muted);margin-top:0.3rem;">
+                        Know exactly how long before your turn.
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 fade-in fade-in-3">
+                <div class="card p-3">
+                    <i class="bi bi-shield-check mb-2" style="font-size:1.8rem;color:var(--danger);"></i>
+                    <div style="font-weight:700;font-size:0.95rem;">Secure & Private</div>
+                    <div style="font-size:0.82rem;color:var(--text-muted);margin-top:0.3rem;">
+                        Your data stays protected at all times.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

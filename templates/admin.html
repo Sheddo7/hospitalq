@@ -1,0 +1,374 @@
+{% extends 'base.html' %}
+{% block title %}Admin Panel | HospitalQ{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center fade-in">
+    <div>
+        <h4><i class="bi bi-speedometer2 me-2" style="color:var(--primary);"></i>Admin Panel</h4>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">
+            Manage queues and monitor department performance
+        </p>
+    </div>
+    {% if current_user.role == 'admin' %}
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('manage_departments') }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-building me-1"></i> Departments
+        </a>
+        <a href="{{ url_for('manage_users') }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-people me-1"></i> Manage Users
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Department Tabs (only those the doctor has access to) -->
+<ul class="nav nav-tabs mb-4 fade-in fade-in-1">
+    {% for dept in departments %}
+    <li class="nav-item">
+        <a class="nav-link {% if dept.id == selected_id %}active{% endif %}"
+           href="{{ url_for('admin', dept=dept.id) }}">
+            {{ dept.name }}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+
+<!-- Stats Row -->
+<div class="row g-3 mb-4 fade-in fade-in-1">
+    <div class="col-6 col-md-3">
+        <div class="card stat-card">
+            <div class="stat-number" style="color:var(--warning);">{{ waiting|length }}</div>
+            <div class="stat-label">Waiting</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card">
+            <div class="stat-number" style="color:var(--success);">{{ done_today }}</div>
+            <div class="stat-label">Served Today</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card">
+            <div class="stat-number" style="color:var(--primary);">
+                {% if serving %}#{{ serving.ticket_number }}{% else %}—{% endif %}
+            </div>
+            <div class="stat-label">Now Serving</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card stat-card">
+            <div class="stat-number" style="color:var(--danger);">
+                {{ waiting|length + done_today }}
+            </div>
+            <div class="stat-label">Total Today</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Left Column -->
+    <div class="col-lg-4 fade-in fade-in-2">
+        <!-- Receptionist cannot see call buttons -->
+        {% if current_user.role != 'receptionist' %}
+        <div class="card mb-3">
+            <div class="card-header success">
+                <i class="bi bi-person-check me-2"></i>Now Serving
+            </div>
+            <div class="card-body text-center p-4">
+                {% if serving %}
+                <div class="ticket-number" style="color:var(--success);">#{{ serving.ticket_number }}</div>
+                <p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem;">
+                    {{ serving.patient.full_name }}
+                </p>
+                {% if serving.notes %}
+                <div class="mt-2 p-2" style="background:var(--surface-2);border-radius:var(--radius-sm);font-size:0.8rem;color:var(--text-muted);text-align:left;">
+                    <i class="bi bi-sticky me-1"></i>{{ serving.notes }}
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="empty-state py-3">
+                    <i class="bi bi-person-dash"></i>
+                    <p style="font-size:0.85rem;">No one being served</p>
+                </div>
+                {% endif %}
+                <div class="d-flex gap-2 mt-3">
+                    <form method="POST" action="{{ url_for('call_next', dept_id=selected_id) }}" class="flex-grow-1">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-success w-100" disabled="{{ 'disabled' if current_user.role == 'doctor' and not current_user.is_available else '' }}" title="{{ 'You are paused' if current_user.role == 'doctor' and not current_user.is_available else '' }}">
+                            <i class="bi bi-arrow-right-circle me-1"></i> Call Next
+                        </button>
+                    </form>
+                    <form method="POST" action="{{ url_for('call_multiple', dept_id=selected_id, count=3) }}" class="flex-grow-1">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-outline-success w-100" onclick="return confirm('Call next 3 patients? Only the first will be marked as serving.')" disabled="{{ 'disabled' if current_user.role == 'doctor' and not current_user.is_available else '' }}">
+                            <i class="bi bi-arrow-repeat me-1"></i> Next 3
+                        </button>
+                    </form>
+                </div>
+                {% if current_user.role == 'admin' %}
+                <div class="mt-2">
+                    <form method="POST" action="{{ url_for('reset_queue', dept_id=selected_id) }}" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-outline-danger w-100 btn-sm" onclick="return confirm('Reset entire queue? All waiting tickets will be cancelled.')">
+                            <i class="bi bi-exclamation-triangle me-1"></i> Reset Queue
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}  <!-- end receptionist restriction -->
+
+        <!-- Doctor Performance Stats (only for doctors) -->
+        {% if current_user.role == 'doctor' and doctor_stats %}
+        <div class="card mb-3">
+            <div class="card-header primary">
+                <i class="bi bi-person-badge me-2"></i>Your Performance
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6">
+                        <div class="stat-number" style="color:var(--primary);">{{ doctor_stats.patients_today }}</div>
+                        <div class="stat-label">Served Today</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stat-number" style="color:var(--warning);">{{ doctor_stats.patients_per_hour }}</div>
+                        <div class="stat-label">Patients / Hour</div>
+                    </div>
+                    <div class="col-12 mt-2">
+                        <div class="stat-number" style="color:var(--success);">{{ doctor_stats.avg_wait_minutes }}m</div>
+                        <div class="stat-label">Avg Wait (your patients)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Peak Hours Chart -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="bi bi-clock-history me-2" style="color:var(--primary);"></i>Peak Hours (Today)
+            </div>
+            <div class="card-body">
+                <canvas id="peakHoursChart" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Department Volume Chart -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-bar-chart me-2" style="color:var(--primary);"></i>Today's Volume by Dept
+            </div>
+            <div class="card-body">
+                <canvas id="deptChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Waiting List -->
+    <div class="col-lg-8 fade-in fade-in-3">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span><i class="bi bi-hourglass-split me-2" style="color:var(--warning);"></i>Waiting Queue</span>
+                <div class="d-flex gap-2">
+                    {% if selected_id %}
+                    <a href="{{ url_for('export_csv', dept_id=selected_id) }}" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-download me-1"></i> Export CSV
+                    </a>
+                    {% else %}
+                    <button class="btn btn-outline-primary btn-sm" disabled title="No department selected">
+                        <i class="bi bi-download me-1"></i> Export CSV
+                    </button>
+                    {% endif %}
+                        <i class="bi bi-download me-1"></i> Export CSV
+                    </a>
+                    <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--warning);">
+                        {{ waiting|length }} patients
+                    </span>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Search Filters -->
+                <div class="row g-2 mb-3">
+                    <div class="col-md-5">
+                        <div class="search-wrapper">
+                            <i class="bi bi-search"></i>
+                            <form method="GET" action="{{ url_for('admin') }}">
+                                <input type="hidden" name="dept" value="{{ selected_id }}">
+                                <input type="text" name="search_name" class="form-control"
+                                    placeholder="Search by patient name..."
+                                    value="{{ search_name }}">
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <form method="GET" action="{{ url_for('admin') }}" class="d-flex gap-2">
+                            <input type="hidden" name="dept" value="{{ selected_id }}">
+                            <input type="text" name="search_ticket" class="form-control"
+                                placeholder="Ticket number..."
+                                value="{{ search_ticket }}">
+                            <button type="submit" class="btn btn-outline-primary btn-sm">Go</button>
+                        </form>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <a href="{{ url_for('admin', dept=selected_id) }}" class="btn btn-sm btn-secondary">Clear</a>
+                    </div>
+                </div>
+
+                {% if waiting %}
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Ticket</th>
+                                <th>Patient</th>
+                                <th>Notes</th>
+                                <th>Booked</th>
+                                {% if current_user.role != 'receptionist' %}
+                                <th>Actions</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in waiting %}
+                            <tr>
+                                <td>
+                                    <span style="font-weight:700;">#{{ entry.ticket_number }}</span>
+                                    {% if loop.first %}
+                                    <span class="badge ms-1" style="background:var(--primary-light);color:var(--primary);">Next</span>
+                                    {% endif %}
+                                </td>
+                                <td style="font-size:0.88rem;">{{ entry.patient.full_name }}</td>
+                                <td style="font-size:0.8rem;color:var(--text-muted);max-width:200px;">
+                                    {% if entry.notes %}
+                                        <div class="note-container">
+                                            <i class="bi bi-sticky me-1"></i>
+                                            <span class="note-text">{{ entry.notes[:80] }}{% if entry.notes|length > 80 %}…{% endif %}</span>
+                                            {% if 'wheelchair' in entry.notes.lower() %}
+                                                <span class="badge ms-1" style="background:rgba(0,102,204,0.2);color:var(--primary);">♿ Wheelchair</span>
+                                            {% endif %}
+                                            {% if 'interpreter' in entry.notes.lower() %}
+                                                <span class="badge ms-1" style="background:rgba(0,168,107,0.2);color:var(--success);">🗣️ Interpreter</span>
+                                            {% endif %}
+                                            {% if 'urgent' in entry.notes.lower() %}
+                                                <span class="badge ms-1" style="background:rgba(239,68,68,0.2);color:var(--danger);">⚠️ Urgent</span>
+                                            {% endif %}
+                                        </div>
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td style="color:var(--text-muted);font-size:0.82rem;">
+                                    {{ entry.booked_at.strftime('%H:%M') }}
+                                </td>
+                                {% if current_user.role != 'receptionist' %}
+                                <td>
+                                    <form method="POST" action="{{ url_for('mark_no_show', entry_id=entry.id) }}" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-outline-warning btn-sm" onclick="return confirm('Mark {{ entry.patient.full_name }} as no-show?')" disabled="{{ 'disabled' if current_user.role == 'doctor' and not current_user.is_available else '' }}">
+                                            <i class="bi bi-person-dash"></i> No-Show
+                                        </button>
+                                    </form>
+                                </td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-check2-all" style="color:var(--success);"></i>
+                    <p>{% if search_name or search_ticket %}No results{% else %}All patients served{% endif %}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Department volume chart
+    const deptData = {{ dept_stats | tojson }};
+    const ctxDept = document.getElementById('deptChart').getContext('2d');
+    new Chart(ctxDept, {
+        type: 'bar',
+        data: {
+            labels: deptData.map(d => d.name),
+            datasets: [{
+                label: 'Tickets Today',
+                data: deptData.map(d => d.count),
+                backgroundColor: 'rgba(0,102,204,0.15)',
+                borderColor: 'rgba(0,102,204,0.8)',
+                borderWidth: 2,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, color: getComputedStyle(document.documentElement).getPropertyValue('--text-muted') },
+                    grid: { color: getComputedStyle(document.documentElement).getPropertyValue('--border') }
+                },
+                x: {
+                    ticks: {
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-muted'),
+                        maxRotation: 30
+                    },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+
+    // Peak hours chart
+    const peakData = {{ peak_hours | tojson }};
+    const ctxPeak = document.getElementById('peakHoursChart').getContext('2d');
+    new Chart(ctxPeak, {
+        type: 'line',
+        data: {
+            labels: peakData.map(d => d.hour),
+            datasets: [{
+                label: 'Tickets Booked',
+                data: peakData.map(d => d.count),
+                borderColor: 'var(--warning)',
+                backgroundColor: 'rgba(245,158,11,0.1)',
+                tension: 0.3,
+                fill: true,
+                pointBackgroundColor: 'var(--warning)',
+                pointBorderColor: 'var(--surface)',
+                pointRadius: 3,
+                pointHoverRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: { callbacks: { label: (ctx) => `${ctx.raw} tickets` } },
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, color: getComputedStyle(document.documentElement).getPropertyValue('--text-muted') },
+                    grid: { color: getComputedStyle(document.documentElement).getPropertyValue('--border') }
+                },
+                x: {
+                    ticks: {
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-muted'),
+                        maxRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: 12
+                    },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

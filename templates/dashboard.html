@@ -1,0 +1,239 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard | HospitalQ{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center fade-in">
+    <div>
+        <h4><i class="bi bi-grid text-primary me-2"></i>Dashboard</h4>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">
+            Welcome back, <strong>{{ current_user.full_name }}</strong> ·
+            <span class="badge" style="background:var(--primary-light);color:var(--primary);">
+                {{ current_user.role }}
+            </span>
+        </p>
+    </div>
+    <a href="{{ url_for('history') }}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-clock-history me-1"></i> My History
+    </a>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7 fade-in fade-in-1">
+        {% if active_ticket %}
+        <div class="card ticket-card {% if active_ticket.status == 'serving' %}ticket-serving{% endif %}">
+            <div class="card-body text-center p-4">
+                <p style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">
+                    Your Ticket
+                </p>
+                <div class="ticket-number">#{{ active_ticket.ticket_number }}</div>
+                <p style="color:var(--text-muted);margin-top:0.5rem;">
+                    <i class="bi bi-building me-1"></i>{{ active_ticket.department.name }}
+                </p>
+
+                {% if active_ticket.status == 'serving' %}
+                <div class="badge mt-1" style="background:rgba(0,168,107,0.15);color:var(--success);font-size:0.9rem;padding:0.5rem 1rem;">
+                    <i class="bi bi-bell-fill me-1"></i> You're being called — Go in now!
+                </div>
+                {% else %}
+                <div class="d-flex justify-content-center gap-4 mt-3">
+                    <div>
+                        <div style="font-size:1.6rem;font-weight:800;color:var(--primary);">{{ position }}</div>
+                        <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);">
+                            Your Position
+                        </div>
+                        <div style="font-size:0.7rem;color:var(--text-muted);">of {{ total_waiting }} waiting</div>
+                    </div>
+                    <div style="width:1px;background:var(--border);"></div>
+                    <div>
+                        <div style="font-size:1.6rem;font-weight:800;color:var(--warning);">~{{ est_wait }}m</div>
+                        <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);">Est. Wait</div>
+                    </div>
+                </div>
+                <div class="wait-bar mt-3" style="max-width:200px;margin:0.75rem auto 0;">
+                    <div class="wait-bar-fill"
+                        style="width:{{ [100 - (position * 10), 5]|max }}%;
+                               background:{% if position <= 2 %}var(--success){% elif position <= 5 %}var(--warning){% else %}var(--danger){% endif %};">
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if active_ticket.notes %}
+                <div class="mt-3 p-2" style="background:var(--surface-2);border-radius:var(--radius-sm);font-size:0.83rem;color:var(--text-muted);text-align:left;">
+                    <i class="bi bi-sticky me-1"></i> {{ active_ticket.notes }}
+                </div>
+                {% endif %}
+
+                <div class="d-flex justify-content-center gap-2 mt-4 flex-wrap">
+                    <a href="{{ url_for('queue_status') }}" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-list-ol me-1"></i> Full Queue
+                    </a>
+                    <a href="{{ url_for('ticket_pdf') }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-download me-1"></i> Download
+                    </a>
+                    <a href="{{ url_for('ticket_pdf') }}" target="_blank"
+                        class="btn btn-outline-primary btn-sm"
+                        onclick="setTimeout(() => { this.blur(); window.open('{{ url_for('ticket_pdf') }}', '_blank'); }, 100); return false;">
+                        <i class="bi bi-printer me-1"></i> Print
+                    </a>
+                    <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal">
+                        <i class="bi bi-x-circle me-1"></i> Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Wait time trend chart -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <i class="bi bi-graph-up me-2" style="color:var(--primary);"></i> Wait Time Trend (Last 2 Hours)
+            </div>
+            <div class="card-body">
+                <canvas id="waitTrendChart" height="150"></canvas>
+            </div>
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-calendar-plus me-2" style="color:var(--primary);"></i> Book a Slot
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.department.label(class="form-label") }}
+                        {{ form.department(class="form-select") }}
+                        {% for err in form.department.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-4">
+                        {{ form.notes.label(class="form-label") }}
+                        {{ form.notes(class="form-control", rows=2, placeholder="e.g. Follow-up visit, chest pain, referral...") }}
+                        {% for err in form.notes.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="d-grid">
+                        {{ form.submit(class="btn btn-primary btn-lg") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-5 fade-in fade-in-2">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle me-2" style="color:var(--primary);"></i> How It Works
+            </div>
+            <div class="card-body">
+                <div class="d-flex flex-column gap-3 mt-1">
+                    {% for step, icon, text in [
+                        ('1', 'calendar-plus', 'Select your department and book a slot'),
+                        ('2', 'ticket-perforated', 'Receive your unique ticket number'),
+                        ('3', 'broadcast', 'Monitor queue from anywhere in real time'),
+                        ('4', 'door-open', 'Arrive only when your number is close')
+                    ] %}
+                    <div class="d-flex align-items-start gap-3">
+                        <div style="min-width:28px;height:28px;background:var(--primary-light);color:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;">
+                            {{ step }}
+                        </div>
+                        <div style="font-size:0.88rem;color:var(--text-muted);padding-top:4px;">{{ text }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <a href="{{ url_for('queue_status') }}" class="btn btn-outline-primary w-100 mt-4">
+                    <i class="bi bi-broadcast me-1"></i> View Live Queue
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cancel Modal -->
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('cancel_ticket') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cancel Ticket</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Why are you cancelling?</p>
+                    <select name="cancel_reason" class="form-select" required>
+                        <option value="">Select a reason</option>
+                        <option value="changed_mind">Changed mind</option>
+                        <option value="already_seen">Already seen</option>
+                        <option value="will_reschedule">Will reschedule</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-danger">Confirm Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% if active_ticket %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+<script>
+    var socket = io();
+    socket.emit('join', { dept_id: {{ active_ticket.department_id }} });
+    socket.on('queue_update', function(data) {
+        if (data.dept_id == {{ active_ticket.department_id }}) {
+            location.reload();
+        }
+    });
+
+    const trendData = {{ trend_data | tojson }};
+    const ctx = document.getElementById('waitTrendChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: trendData.map(d => d.time),
+            datasets: [{
+                label: 'Average Wait (minutes)',
+                data: trendData.map(d => d.wait),
+                borderColor: 'var(--primary)',
+                backgroundColor: 'rgba(0,102,204,0.05)',
+                tension: 0.3,
+                fill: true,
+                pointBackgroundColor: 'var(--primary)',
+                pointBorderColor: 'var(--surface)',
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (ctx) => `${ctx.raw} min` } }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'Minutes', color: 'var(--text-muted)' },
+                    ticks: { stepSize: 5, color: 'var(--text-muted)' }
+                },
+                x: {
+                    title: { display: true, text: 'Time', color: 'var(--text-muted)' },
+                    ticks: { color: 'var(--text-muted)' }
+                }
+            }
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}

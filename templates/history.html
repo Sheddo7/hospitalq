@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+{% block title %}My History | HospitalQ{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center fade-in">
+    <div>
+        <h4><i class="bi bi-clock-history me-2" style="color:var(--primary);"></i>Visit History</h4>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">
+            All your past appointments
+        </p>
+    </div>
+    <div>
+        <a href="{{ url_for('history_pdf') }}?{{ request.query_string.decode() }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-download me-1"></i> Download PDF
+        </a>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary btn-sm ms-2">
+            <i class="bi bi-arrow-left me-1"></i> Dashboard
+        </a>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4 fade-in fade-in-1">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('history') }}" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Date Range</label>
+                <select name="date_filter" class="form-select" onchange="this.form.submit()">
+                    {% if date_filter == 'all' %}
+                        <option value="all" selected>All time</option>
+                    {% else %}
+                        <option value="all">All time</option>
+                    {% endif %}
+
+                    {% if date_filter == 'last_week' %}
+                        <option value="last_week" selected>Last 7 days</option>
+                    {% else %}
+                        <option value="last_week">Last 7 days</option>
+                    {% endif %}
+
+                    {% if date_filter == 'last_month' %}
+                        <option value="last_month" selected>Last 30 days</option>
+                    {% else %}
+                        <option value="last_month">Last 30 days</option>
+                    {% endif %}
+
+                    {% if date_filter == 'custom' %}
+                        <option value="custom" selected>Custom</option>
+                    {% else %}
+                        <option value="custom">Custom</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div class="col-md-3" id="customDateRange" style="display: {% if date_filter == 'custom' %}flex{% else %}none{% endif %}; gap: 5px;">
+                <input type="date" name="start_date" class="form-control" value="{{ start_date or '' }}" placeholder="Start">
+                <input type="date" name="end_date" class="form-control" value="{{ end_date or '' }}" placeholder="End">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Search (dept / notes)</label>
+                <input type="text" name="search" class="form-control" value="{{ search or '' }}" placeholder="e.g. Cardiology, fever">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">Filter</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Stats Card -->
+<div class="row g-3 mb-4 fade-in fade-in-2">
+    <div class="col-md-4">
+        <div class="card stat-card">
+            <div class="stat-number" style="color:var(--primary);">{{ past_tickets|length }}</div>
+            <div class="stat-label">Total Visits</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card">
+            {% set completed = past_tickets|selectattr('status', 'equalto', 'done')|list %}
+            <div class="stat-number" style="color:var(--success);">{{ completed|length }}</div>
+            <div class="stat-label">Completed</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card">
+            <div class="stat-number" style="color:var(--warning);">{{ avg_wait }}m</div>
+            <div class="stat-label">Average Wait</div>
+        </div>
+    </div>
+</div>
+
+<!-- History Table -->
+<div class="card fade-in fade-in-3">
+    <div class="card-body p-0">
+        {% if past_tickets %}
+        <div class="table-responsive">
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Ticket</th>
+                        <th>Department</th>
+                        <th>Date</th>
+                        <th>Wait Time</th>
+                        <th>Notes</th>
+                        <th>Status</th>
+                        <th>Rating</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ticket in past_tickets %}
+                    <tr>
+                        <td><span style="font-weight:700;">#{{ ticket.ticket_number }}</span></td>
+                        <td style="font-size:0.88rem;">{{ ticket.department.name }}</td>
+                        <td style="color:var(--text-muted);font-size:0.82rem;">
+                            {{ ticket.booked_at.strftime('%d %b %Y, %H:%M') }}
+                        </td>
+                        <td>
+                            {% if ticket.served_at and ticket.status == 'done' %}
+                                {% set wait = (ticket.served_at - ticket.booked_at).seconds // 60 %}
+                                <span class="badge" style="background:{% if wait > 30 %}rgba(239,68,68,0.15);color:var(--danger){% elif wait > 15 %}rgba(245,158,11,0.15);color:var(--warning){% else %}rgba(0,168,107,0.15);color:var(--success){% endif %};">
+                                    {{ wait }} min
+                                </span>
+                            {% else %}
+                                <span style="color:var(--text-muted);">—</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:0.8rem;color:var(--text-muted);max-width:180px;">
+                            {% if ticket.notes %}
+                                <i class="bi bi-sticky me-1"></i>
+                                {{ ticket.notes[:50] }}{% if ticket.notes|length > 50 %}…{% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
+                            {% if ticket.status == 'done' %}
+                                <span class="badge" style="background:rgba(0,168,107,0.15);color:var(--success);">Completed</span>
+                            {% elif ticket.status == 'cancelled' %}
+                                <span class="badge" style="background:rgba(239,68,68,0.15);color:var(--danger);">Cancelled</span>
+                                {% if ticket.cancel_reason %}
+                                    <br><small class="text-muted" style="font-size:0.7rem;">{{ ticket.cancel_reason|replace('_', ' ')|title }}</small>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if ticket.status == 'done' %}
+                                {% if ticket.rating %}
+                                    <div class="text-warning">
+                                        {% for i in range(ticket.rating) %}★{% endfor %}
+                                        {% for i in range(5 - ticket.rating) %}☆{% endfor %}
+                                    </div>
+                                {% else %}
+                                    <form method="POST" action="{{ url_for('rate_visit', entry_id=ticket.id) }}" class="rate-form">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <div class="star-rating">
+                                            {% for star in range(1,6) %}
+                                            <button type="submit" name="rating" value="{{ star }}" class="star-btn" title="{{ star }} stars">☆</button>
+                                            {% endfor %}
+                                        </div>
+                                    </form>
+                                {% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state py-5">
+            <i class="bi bi-calendar-x" style="font-size:3rem;color:var(--text-muted);opacity:0.4;display:block;margin-bottom:1rem;"></i>
+            <p style="color:var(--text-muted);">No visits found for the selected filters.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    // Toggle custom date inputs
+    const dateFilter = document.querySelector('select[name="date_filter"]');
+    const customDiv = document.getElementById('customDateRange');
+    if (dateFilter) {
+        dateFilter.addEventListener('change', function() {
+            if (this.value === 'custom') {
+                customDiv.style.display = 'flex';
+            } else {
+                customDiv.style.display = 'none';
+            }
+        });
+    }
+</script>
+
+<style>
+    .star-rating {
+        display: flex;
+        gap: 4px;
+    }
+    .star-btn {
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        color: var(--warning);
+        padding: 0 2px;
+    }
+    .star-btn:hover {
+        transform: scale(1.1);
+    }
+</style>
+{% endblock %}

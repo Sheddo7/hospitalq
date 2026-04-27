@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Edit User | HospitalQ{% endblock %}
+
+{% block content %}
+<div class="page-header fade-in">
+    <h4><i class="bi bi-pencil-square me-2" style="color:var(--primary);"></i>Edit User</h4>
+    <p style="color:var(--text-muted);font-size:0.85rem;">Editing: {{ user.full_name }}</p>
+</div>
+
+<div class="row justify-content-center fade-in fade-in-1">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.full_name.label(class="form-label") }}
+                        {{ form.full_name(class="form-control") }}
+                        {% for err in form.full_name.errors %}
+                            <div class="text-danger">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.email.label(class="form-label") }}
+                        {{ form.email(class="form-control") }}
+                        {% for err in form.email.errors %}
+                            <div class="text-danger">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.role.label(class="form-label") }}
+                        {{ form.role(class="form-select") }}
+                    </div>
+                    <div class="d-grid">
+                        {{ form.submit(class="btn btn-primary") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="mt-3 text-center">
+            <a href="{{ url_for('manage_users') }}" class="btn btn-outline-secondary">Back to Users</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+{% block title %}Manage Users | HospitalQ{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center fade-in">
+    <div>
+        <h4><i class="bi bi-people me-2" style="color:var(--primary);"></i>Manage Users</h4>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">
+            Create, edit, and manage user accounts
+        </p>
+    </div>
+    <a href="{{ url_for('admin') }}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i> Back to Panel
+    </a>
+</div>
+
+<div class="row g-4">
+    <!-- Create User Form -->
+    <div class="col-lg-4 fade-in fade-in-1">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-person-plus me-2" style="color:var(--primary);"></i>Create Account
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('create_user') }}">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.full_name.label(class="form-label") }}
+                        {{ form.full_name(class="form-control", placeholder="Full name") }}
+                        {% for err in form.full_name.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.email.label(class="form-label") }}
+                        {{ form.email(class="form-control", placeholder="email@example.com") }}
+                        {% for err in form.email.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.password.label(class="form-label") }}
+                        {{ form.password(class="form-control", placeholder="Min. 6 characters") }}
+                        {% for err in form.password.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-4">
+                        {{ form.role.label(class="form-label") }}
+                        {{ form.role(class="form-select") }}
+                    </div>
+                    <div class="d-grid">
+                        {{ form.submit(class="btn btn-primary w-100") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="col-lg-8 fade-in fade-in-2">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-person-lines-fill me-2" style="color:var(--primary);"></i>All Accounts</span>
+                <span class="badge" style="background:var(--primary-light);color:var(--primary);">
+                    {{ users|length }} total
+                </span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td style="font-weight:600;font-size:0.88rem;">
+                                    {{ user.full_name }}
+                                    {% if user.id == current_user.id %}
+                                    <span class="badge ms-1" style="background:var(--primary-light);color:var(--primary);font-size:0.7rem;">You</span>
+                                    {% endif %}
+                                </td>
+                                <td style="font-size:0.82rem;color:var(--text-muted);">{{ user.email }}</td>
+                                <td>
+                                    {% if user.role == 'admin' %}
+                                    <span class="badge" style="background:rgba(239,68,68,0.12);color:var(--danger);">Admin</span>
+                                    {% elif user.role == 'doctor' %}
+                                    <span class="badge" style="background:rgba(0,102,204,0.12);color:var(--primary);">Doctor</span>
+                                    {% elif user.role == 'receptionist' %}
+                                    <span class="badge" style="background:rgba(245,158,11,0.12);color:var(--warning);">Receptionist</span>
+                                    {% else %}
+                                    <span class="badge" style="background:rgba(0,168,107,0.12);color:var(--success);">Patient</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if user.role == 'doctor' %}
+                                        {% if user.is_available %}
+                                        <span class="badge" style="background:rgba(0,168,107,0.15);color:var(--success);">Available</span>
+                                        {% else %}
+                                        <span class="badge" style="background:rgba(239,68,68,0.15);color:var(--danger);">Paused</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-pencil"></i> Edit
+                                        </a>
+                                        <a href="{{ url_for('reset_user_password', user_id=user.id) }}" class="btn btn-sm btn-outline-warning">
+                                            <i class="bi bi-key"></i> Reset
+                                        </a>
+                                        {% if user.role == 'doctor' %}
+                                        <button class="btn btn-sm btn-outline-info" onclick="assignDepartments({{ user.id }})">
+                                            <i class="bi bi-building"></i> Assign
+                                        </button>
+                                        {% endif %}
+                                        {% if user.id != current_user.id %}
+                                        <form method="POST" action="{{ url_for('delete_user', user_id=user.id) }}" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Delete {{ user.full_name }}?')">
+                                                <i class="bi bi-trash"></i> Delete
+                                            </button>
+                                        </form>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assign Departments Modal -->
+<div class="modal fade" id="assignDeptModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="assignDeptForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">Assign Departments</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <select name="departments" multiple class="form-select" size="8">
+                        {% for dept in all_departments %}
+                        <option value="{{ dept.id }}">{{ dept.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted d-block mt-2">Hold Ctrl (Cmd) to select multiple.</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function assignDepartments(userId) {
+        const form = document.getElementById('assignDeptForm');
+        form.action = `/admin/users/assign-departments/${userId}`;
+        new bootstrap.Modal(document.getElementById('assignDeptModal')).show();
+    }
+</script>
+{% endblock %}

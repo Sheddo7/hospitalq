@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% block title %}Manage Departments | HospitalQ{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center fade-in">
+    <div>
+        <h4><i class="bi bi-building me-2" style="color:var(--primary);"></i>Manage Departments</h4>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">
+            Add, rename, remove departments and configure base wait time
+        </p>
+    </div>
+    <a href="{{ url_for('admin') }}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i> Back to Panel
+    </a>
+</div>
+
+<div class="row g-4">
+    <!-- Create Department -->
+    <div class="col-lg-4 fade-in fade-in-1">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-plus-circle me-2" style="color:var(--primary);"></i>Add Department
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('create_department') }}">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.name.label(class="form-label") }}
+                        {{ form.name(class="form-control", placeholder="e.g. Neurology") }}
+                        {% for err in form.name.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.base_wait_minutes.label(class="form-label") }}
+                        {{ form.base_wait_minutes(class="form-control", placeholder="Base wait in minutes", min=1, max=120) }}
+                        <small class="text-muted">Default estimated wait time per patient (minutes)</small>
+                        {% for err in form.base_wait_minutes.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="d-grid">
+                        {{ form.submit(class="btn btn-primary w-100") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Departments List -->
+    <div class="col-lg-8 fade-in fade-in-2">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>
+                    <i class="bi bi-list-ul me-2" style="color:var(--primary);"></i>All Departments
+                </span>
+                <span class="badge" style="background:var(--primary-light);color:var(--primary);">
+                    {{ departments|length }} total
+                </span>
+            </div>
+            <div class="card-body p-0">
+                {% if departments %}
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Active Queue</th>
+                            <th>Base Wait (min)</th>
+                            <th>Rename</th>
+                            <th>Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dept in departments %}
+                        {% set active_count = dept.queue_entries|selectattr('status', 'in', ['waiting', 'serving'])|list|length %}
+                        <tr>
+                            <td style="font-weight:600;font-size:0.88rem;">
+                                <i class="bi bi-building me-1" style="color:var(--text-muted);"></i>
+                                {{ dept.name }}
+                            </td>
+                            <td>
+                                {% if active_count > 0 %}
+                                <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--warning);">
+                                    {{ active_count }} active
+                                </span>
+                                {% else %}
+                                <span class="badge" style="background:rgba(0,168,107,0.12);color:var(--success);">
+                                    Clear
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <form method="POST" action="{{ url_for('update_department_base', dept_id=dept.id) }}"
+                                    class="d-flex gap-2 align-items-center">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="number" name="base_wait_minutes" class="form-control form-control-sm"
+                                        value="{{ dept.base_wait_minutes }}" style="width:80px;" min="1" max="120">
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">
+                                        <i class="bi bi-pencil"></i> Update
+                                    </button>
+                                </form>
+                            </td>
+                            <td>
+                                <form method="POST" action="{{ url_for('rename_department', dept_id=dept.id) }}"
+                                    class="d-flex gap-2">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="text" name="name" class="form-control form-control-sm"
+                                        value="{{ dept.name }}" style="max-width:140px;">
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                </form>
+                            </td>
+                            <td>
+                                {% if active_count == 0 %}
+                                <form method="POST" action="{{ url_for('delete_department', dept_id=dept.id) }}"
+                                    class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Delete {{ dept.name }}?')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% else %}
+                                <span style="color:var(--text-muted);font-size:0.78rem;">Clear queue first</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-building" style="font-size:2.5rem;opacity:0.3;display:block;margin-bottom:1rem;"></i>
+                    <p style="color:var(--text-muted);">No departments yet. Add one above.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

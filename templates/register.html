@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Register | HospitalQ{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center fade-in">
+    <div class="col-md-5 col-lg-4">
+        <div class="card mt-4">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <i class="bi bi-person-plus-fill" style="font-size:2rem;color:var(--primary);"></i>
+                    <h5 class="mt-2" style="font-weight:700;">Create Account</h5>
+                    <p style="font-size:0.85rem;color:var(--text-muted);">Join HospitalQ today</p>
+                </div>
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.full_name.label(class="form-label") }}
+                        {{ form.full_name(class="form-control", placeholder="John Doe") }}
+                        {% for err in form.full_name.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;margin-top:0.3rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.email.label(class="form-label") }}
+                        {{ form.email(class="form-control", placeholder="you@example.com") }}
+                        {% for err in form.email.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;margin-top:0.3rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.password.label(class="form-label") }}
+                        {{ form.password(class="form-control", placeholder="Min. 6 characters") }}
+                        {% for err in form.password.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;margin-top:0.3rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="mb-4">
+                        {{ form.confirm.label(class="form-label") }}
+                        {{ form.confirm(class="form-control", placeholder="Repeat password") }}
+                        {% for err in form.confirm.errors %}
+                            <div class="text-danger" style="font-size:0.8rem;margin-top:0.3rem;">{{ err }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="d-grid">
+                        {{ form.submit(class="btn btn-primary btn-lg w-100") }}
+                    </div>
+                </form>
+                <p class="text-center mt-3" style="font-size:0.85rem;color:var(--text-muted);">
+                    Already have an account? <a href="{{ url_for('login') }}" style="color:var(--primary);">Login</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
